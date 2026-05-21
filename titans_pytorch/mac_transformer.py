@@ -668,7 +668,7 @@ class MemoryAsContextTransformer(Module):
 
         # sample
 
-        with tqdm.tqdm(total = sample_num_times, disable = not show_progress) as pbar:
+        with tqdm.tqdm(total = sample_num_times, disable = not show_progress, leave = False) as pbar:
 
             while out.shape[-1] < seq_len:
 
