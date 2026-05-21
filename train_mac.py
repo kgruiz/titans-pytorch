@@ -107,8 +107,8 @@ USE_FLEX_ATTN = USE_FLEX_ATTN and USE_TRITON
 USE_FAST_INFERENCE = USE_FAST_INFERENCE and USE_CUDA
 
 print(f'using device: {DEVICE}')
-if USE_CUDA and not USE_TRITON:
-    print('disabling Triton-backed paths for this GPU')
+if USE_CUDA:
+    print(f'Triton-backed paths: {"enabled" if USE_TRITON else "disabled"}')
 
 # wandb experiment tracker
 
