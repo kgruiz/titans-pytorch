@@ -16,6 +16,7 @@ import gzip
 import numpy as np
 import importlib.metadata
 from pathlib import Path
+from datetime import datetime
 
 import torch
 from torch import nn, Tensor
@@ -88,6 +89,11 @@ def parse_args():
     return parser.parse_args()
 
 args = parse_args()
+SAVE_CHECKPOINTS = args.checkpoint_every > 0 or args.save_final_model
+
+if SAVE_CHECKPOINTS and args.checkpoint_dir == Path('checkpoints'):
+    timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
+    args.checkpoint_dir = args.checkpoint_dir / f'{args.checkpoint_prefix}-{timestamp}'
 
 def cuda_is_supported():
     # CUDA can be visible even when the installed PyTorch build cannot run kernels for this GPU.
@@ -143,7 +149,7 @@ def log_runtime_config():
     print(f'periodic checkpoints: {"enabled" if args.checkpoint_every > 0 else "disabled"}')
     print(f'final model save: {"enabled" if args.save_final_model else "disabled"}')
 
-    if args.checkpoint_every > 0 or args.save_final_model:
+    if SAVE_CHECKPOINTS:
         print(f'checkpoint dir: {args.checkpoint_dir}')
 
 log_runtime_config()
