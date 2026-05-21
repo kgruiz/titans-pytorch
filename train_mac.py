@@ -75,6 +75,41 @@ USE_ACCELERATED_SCAN = True
 USE_FLEX_ATTN = True
 USE_FAST_INFERENCE = False
 
+def cuda_is_supported():
+    # CUDA can be visible even when the installed PyTorch build cannot run kernels for this GPU.
+    if not torch.cuda.is_available():
+        return False
+
+    try:
+        x = torch.ones(1, device = 'cuda')
+        y = x + 1
+        torch.cuda.synchronize()
+        return y.item() == 2
+    except Exception as err:
+        print(f'CUDA is visible but unusable, falling back to CPU: {err}')
+        return False
+
+def triton_is_supported():
+    # Flex attention and accelerated scan rely on Triton, which requires newer CUDA devices.
+    if not torch.cuda.is_available():
+        return False
+
+    major, _ = torch.cuda.get_device_capability()
+    return major >= 7
+
+# Keep ordinary CUDA execution when it works, but fall back from unsupported CUDA / Triton paths.
+DEVICE = torch.device('cuda' if cuda_is_supported() else 'cpu')
+USE_CUDA = DEVICE.type == 'cuda'
+USE_TRITON = USE_CUDA and triton_is_supported()
+
+USE_ACCELERATED_SCAN = USE_ACCELERATED_SCAN and USE_TRITON
+USE_FLEX_ATTN = USE_FLEX_ATTN and USE_TRITON
+USE_FAST_INFERENCE = USE_FAST_INFERENCE and USE_CUDA
+
+print(f'using device: {DEVICE}')
+if USE_CUDA and not USE_TRITON:
+    print('disabling Triton-backed paths for this GPU')
+
 # wandb experiment tracker
 
 import wandb
@@ -138,7 +173,7 @@ model = MemoryAsContextTransformer(
         spectral_norm_surprises = NEURAL_MEM_SPEC_NORM_SURPRISES,
         store_with_lookahead_value = NEURAL_MEM_STORE_WITH_LOOKAHEAD_VALUE
     )
-).cuda()
+).to(DEVICE)
 
 # prepare enwik8 data
 
@@ -156,7 +191,7 @@ class TextSamplerDataset(Dataset):
     def __getitem__(self, index):
         rand_start = torch.randint(0, self.data.size(0) - self.seq_len, (1,))
         full_seq = self.data[rand_start: rand_start + self.seq_len + 1].long()
-        return full_seq.cuda()
+        return full_seq.to(DEVICE)
 
     def __len__(self):
         return self.data.size(0) // self.seq_len
