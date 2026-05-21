@@ -10,10 +10,12 @@
 # ///
 
 import random
+import argparse
 import tqdm
 import gzip
 import numpy as np
-import triton
+import importlib.metadata
+from pathlib import Path
 
 import torch
 from torch import nn, Tensor
@@ -77,6 +79,16 @@ USE_ACCELERATED_SCAN = False
 USE_FLEX_ATTN = True
 USE_FAST_INFERENCE = False
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--save-final-model', action = 'store_true', help = 'save the final model checkpoint when training finishes')
+    parser.add_argument('--checkpoint-every', type = int, default = 0, help = 'save a checkpoint every N training steps; 0 disables periodic checkpoints')
+    parser.add_argument('--checkpoint-dir', type = Path, default = Path('checkpoints'), help = 'directory for saved model checkpoints')
+    parser.add_argument('--checkpoint-prefix', default = 'train_mac', help = 'filename prefix for saved model checkpoints')
+    return parser.parse_args()
+
+args = parse_args()
+
 def cuda_is_supported():
     # CUDA can be visible even when the installed PyTorch build cannot run kernels for this GPU.
     if not torch.cuda.is_available():
@@ -117,12 +129,22 @@ def log_runtime_config():
         print(f'cuda capability: sm_{major}{minor}')
         print(f'torch: {torch.__version__}')
         print(f'torch cuda: {torch.version.cuda}')
-        print(f'triton: {triton.__version__}')
+        try:
+            triton_version = importlib.metadata.version('triton')
+        except importlib.metadata.PackageNotFoundError:
+            triton_version = 'not installed'
+
+        print(f'triton: {triton_version}')
         print(f'triton support: {"available" if USE_TRITON else "unavailable"}')
 
     print(f'accelerated scan: {"enabled" if USE_ACCELERATED_SCAN else "disabled"}')
     print(f'flex attention: {"enabled" if USE_FLEX_ATTN else "disabled"}')
     print(f'fast inference cache: {"enabled" if USE_FAST_INFERENCE else "disabled"}')
+    print(f'periodic checkpoints: {"enabled" if args.checkpoint_every > 0 else "disabled"}')
+    print(f'final model save: {"enabled" if args.save_final_model else "disabled"}')
+
+    if args.checkpoint_every > 0 or args.save_final_model:
+        print(f'checkpoint dir: {args.checkpoint_dir}')
 
 log_runtime_config()
 
@@ -221,6 +243,31 @@ val_loader    = cycle(DataLoader(val_dataset, batch_size = BATCH_SIZE))
 
 optim = AdoptAtan2(model.parameters(), lr = LEARNING_RATE)
 
+def save_checkpoint(step, loss = None, final = False):
+    args.checkpoint_dir.mkdir(parents = True, exist_ok = True)
+
+    suffix = 'final' if final else f'step-{step:06d}'
+    checkpoint_path = args.checkpoint_dir / f'{args.checkpoint_prefix}-{suffix}.pt'
+    checkpoint = dict(
+        step = step,
+        loss = None if loss is None else loss.item(),
+        model = model.state_dict(),
+        optim = optim.state_dict(),
+        config = dict(
+            num_batches = NUM_BATCHES,
+            batch_size = BATCH_SIZE,
+            gradient_accumulate_every = GRADIENT_ACCUMULATE_EVERY,
+            learning_rate = LEARNING_RATE,
+            seq_len = SEQ_LEN,
+            use_accelerated_scan = USE_ACCELERATED_SCAN,
+            use_flex_attn = USE_FLEX_ATTN,
+            use_fast_inference = USE_FAST_INFERENCE,
+        )
+    )
+
+    torch.save(checkpoint, checkpoint_path)
+    print(f'saved checkpoint: {checkpoint_path}')
+
 # training
 
 for i in tqdm.tqdm(range(NUM_BATCHES), mininterval = 10., desc = 'training'):
@@ -235,6 +282,11 @@ for i in tqdm.tqdm(range(NUM_BATCHES), mininterval = 10., desc = 'training'):
     optim.step()
     optim.zero_grad()
     wandb.log(dict(loss = loss.item()))
+
+    step = i + 1
+
+    if args.checkpoint_every > 0 and step % args.checkpoint_every == 0:
+        save_checkpoint(step, loss = loss)
 
     if i % VALIDATE_EVERY == 0:
         model.eval()
@@ -251,3 +303,6 @@ for i in tqdm.tqdm(range(NUM_BATCHES), mininterval = 10., desc = 'training'):
         sample = model.sample(inp[None, ...], GENERATE_LENGTH, use_cache = USE_FAST_INFERENCE)
         output_str = decode_tokens(sample[0])
         print(output_str)
+
+if args.save_final_model:
+    save_checkpoint(NUM_BATCHES, final = True)
