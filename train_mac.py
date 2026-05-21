@@ -84,6 +84,7 @@ USE_FAST_INFERENCE = False
 
 def parse_args():
     parser = argparse.ArgumentParser()
+    parser.add_argument('--num-batches', type = int, default = NUM_BATCHES, help = 'number of optimizer-update training steps to run')
     parser.add_argument('--save-final-model', action = 'store_true', help = 'save the final model checkpoint when training finishes')
     parser.add_argument('--checkpoint-every', type = int, default = 0, help = 'save a checkpoint every N training steps; 0 disables periodic checkpoints')
     parser.add_argument('--checkpoint-dir', type = Path, default = Path('checkpoints'), help = 'directory for saved model checkpoints')
@@ -194,13 +195,14 @@ def write_run_info():
         created_at = datetime.now().isoformat(timespec = 'seconds'),
         checkpoint_dir = str(args.checkpoint_dir),
         cli_args = dict(
+            num_batches = args.num_batches,
             save_final_model = args.save_final_model,
             checkpoint_every = args.checkpoint_every,
             checkpoint_dir = str(args.checkpoint_dir),
             checkpoint_prefix = args.checkpoint_prefix,
         ),
         training = dict(
-            num_batches = NUM_BATCHES,
+            num_batches = args.num_batches,
             batch_size = BATCH_SIZE,
             gradient_accumulate_every = GRADIENT_ACCUMULATE_EVERY,
             learning_rate = LEARNING_RATE,
@@ -361,7 +363,7 @@ def save_checkpoint(step, loss = None, final = False):
         model = model.state_dict(),
         optim = optim.state_dict(),
         config = dict(
-            num_batches = NUM_BATCHES,
+            num_batches = args.num_batches,
             batch_size = BATCH_SIZE,
             gradient_accumulate_every = GRADIENT_ACCUMULATE_EVERY,
             learning_rate = LEARNING_RATE,
@@ -384,7 +386,7 @@ def save_checkpoint(step, loss = None, final = False):
 
 # training
 
-for i in tqdm.tqdm(range(NUM_BATCHES), mininterval = 10., desc = 'training'):
+for i in tqdm.tqdm(range(args.num_batches), mininterval = 10., desc = 'training'):
     model.train()
 
     for __ in range(GRADIENT_ACCUMULATE_EVERY):
@@ -423,4 +425,4 @@ for i in tqdm.tqdm(range(NUM_BATCHES), mininterval = 10., desc = 'training'):
         log_metric(dict(step = step, event = 'sample', prompt = prime, output = output_str))
 
 if args.save_final_model:
-    save_checkpoint(NUM_BATCHES, final = True)
+    save_checkpoint(args.num_batches, final = True)
