@@ -45,6 +45,7 @@ PRIME_LENGTH = 100
 GENERATE_LENGTH = 512
 SHOULD_GENERATE = True
 SEQ_LEN = 512
+OUTPUT_SEPARATOR = '---'
 
 # neural memory related
 
@@ -248,6 +249,8 @@ def write_run_info():
 
 write_run_info()
 
+print(OUTPUT_SEPARATOR)
+
 def log_metric(event):
     if not SAVE_CHECKPOINTS:
         return
@@ -417,14 +420,17 @@ for i in tqdm.tqdm(range(args.num_batches), mininterval = 10., desc = 'training'
         model.eval()
         inp = random.choice(val_dataset)[:PRIME_LENGTH]
         prime = decode_tokens(inp)
-        tqdm.tqdm.write(f'--- sample step {step} prompt ---')
+        tqdm.tqdm.write('')
+        tqdm.tqdm.write(f'--- sample step {step}: prompt ---')
         tqdm.tqdm.write(prime)
 
         sample = model.sample(inp[None, ...], GENERATE_LENGTH, use_cache = USE_FAST_INFERENCE)
         output_str = decode_tokens(sample[0])
-        tqdm.tqdm.write(f'--- sample step {step} output ---')
+        tqdm.tqdm.write('')
+        tqdm.tqdm.write(f'--- sample step {step}: output ---')
         tqdm.tqdm.write(output_str)
-        tqdm.tqdm.write(f'--- end sample step {step} ---')
+        tqdm.tqdm.write('')
+        tqdm.tqdm.write(OUTPUT_SEPARATOR)
         log_metric(dict(step = step, event = 'sample', prompt = prime, output = output_str))
 
 if args.save_final_model:
