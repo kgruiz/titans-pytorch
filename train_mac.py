@@ -11,6 +11,8 @@
 
 import random
 import argparse
+import json
+import subprocess
 import tqdm
 import gzip
 import numpy as np
@@ -126,6 +128,39 @@ USE_ACCELERATED_SCAN = USE_ACCELERATED_SCAN and USE_TRITON
 USE_FLEX_ATTN = USE_FLEX_ATTN and USE_TRITON
 USE_FAST_INFERENCE = USE_FAST_INFERENCE and USE_CUDA
 
+def package_version(name):
+    try:
+        return importlib.metadata.version(name)
+    except importlib.metadata.PackageNotFoundError:
+        return 'not installed'
+
+def git_output(*args):
+    try:
+        return subprocess.check_output(('git', *args), text = True).strip()
+    except Exception:
+        return None
+
+def runtime_info():
+    info = dict(
+        device = str(DEVICE),
+        torch = torch.__version__,
+        torch_cuda = torch.version.cuda,
+        triton = package_version('triton'),
+        triton_support = USE_TRITON,
+        accelerated_scan = USE_ACCELERATED_SCAN,
+        flex_attention = USE_FLEX_ATTN,
+        fast_inference_cache = USE_FAST_INFERENCE,
+    )
+
+    if USE_CUDA:
+        major, minor = torch.cuda.get_device_capability()
+        info.update(
+            cuda_device = torch.cuda.get_device_name(),
+            cuda_capability = f'sm_{major}{minor}',
+        )
+
+    return info
+
 def log_runtime_config():
     print(f'using device: {DEVICE}')
 
@@ -135,12 +170,7 @@ def log_runtime_config():
         print(f'cuda capability: sm_{major}{minor}')
         print(f'torch: {torch.__version__}')
         print(f'torch cuda: {torch.version.cuda}')
-        try:
-            triton_version = importlib.metadata.version('triton')
-        except importlib.metadata.PackageNotFoundError:
-            triton_version = 'not installed'
-
-        print(f'triton: {triton_version}')
+        print(f'triton: {package_version("triton")}')
         print(f'triton support: {"available" if USE_TRITON else "unavailable"}')
 
     print(f'accelerated scan: {"enabled" if USE_ACCELERATED_SCAN else "disabled"}')
@@ -153,6 +183,68 @@ def log_runtime_config():
         print(f'checkpoint dir: {args.checkpoint_dir}')
 
 log_runtime_config()
+
+def write_run_info():
+    if not SAVE_CHECKPOINTS:
+        return
+
+    args.checkpoint_dir.mkdir(parents = True, exist_ok = True)
+
+    run_info = dict(
+        created_at = datetime.now().isoformat(timespec = 'seconds'),
+        checkpoint_dir = str(args.checkpoint_dir),
+        cli_args = dict(
+            save_final_model = args.save_final_model,
+            checkpoint_every = args.checkpoint_every,
+            checkpoint_dir = str(args.checkpoint_dir),
+            checkpoint_prefix = args.checkpoint_prefix,
+        ),
+        training = dict(
+            num_batches = NUM_BATCHES,
+            batch_size = BATCH_SIZE,
+            gradient_accumulate_every = GRADIENT_ACCUMULATE_EVERY,
+            learning_rate = LEARNING_RATE,
+            validate_every = VALIDATE_EVERY,
+            generate_every = GENERATE_EVERY,
+            prime_length = PRIME_LENGTH,
+            generate_length = GENERATE_LENGTH,
+            should_generate = SHOULD_GENERATE,
+            seq_len = SEQ_LEN,
+        ),
+        model = dict(
+            neural_memory_depth = NEURAL_MEMORY_DEPTH,
+            num_persist_mem = NUM_PERSIST_MEM,
+            num_longterm_mem = NUM_LONGTERM_MEM,
+            neural_mem_layers = NEURAL_MEM_LAYERS,
+            neural_mem_gate_attn_output = NEURAL_MEM_GATE_ATTN_OUTPUT,
+            neural_mem_momentum = NEURAL_MEM_MOMENTUM,
+            neural_mem_momentum_order = NEURAL_MEM_MOMENTUM_ORDER,
+            neural_mem_qk_norm = NEURAL_MEM_QK_NORM,
+            neural_mem_max_lr = NEURAL_MEM_MAX_LR,
+            use_mem_attention_model = USE_MEM_ATTENTION_MODEL,
+            window_size = WINDOW_SIZE,
+            neural_mem_segment_len = NEURAL_MEM_SEGMENT_LEN,
+            neural_mem_batch_size = NEURAL_MEM_BATCH_SIZE,
+            sliding_windows = SLIDING_WINDOWS,
+            store_attn_pool_chunks = STORE_ATTN_POOL_CHUNKS,
+            memory_model_per_layer_learned_lr = MEMORY_MODEL_PER_LAYER_LEARNED_LR,
+            neural_mem_weight_residual = NEURAL_MEM_WEIGHT_RESIDUAL,
+            neural_mem_qkv_receives_diff_view = NEURAL_MEM_QKV_RECEIVES_DIFF_VIEW,
+            neural_mem_spec_norm_surprises = NEURAL_MEM_SPEC_NORM_SURPRISES,
+            neural_mem_store_with_lookahead_value = NEURAL_MEM_STORE_WITH_LOOKAHEAD_VALUE,
+        ),
+        runtime = runtime_info(),
+        git = dict(
+            commit = git_output('rev-parse', 'HEAD'),
+            status = git_output('status', '--short'),
+        ),
+    )
+
+    run_info_path = args.checkpoint_dir / 'run-info.json'
+    run_info_path.write_text(json.dumps(run_info, indent = 2) + '\n')
+    print(f'wrote run info: {run_info_path}')
+
+write_run_info()
 
 # wandb experiment tracker
 
