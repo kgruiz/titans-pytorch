@@ -246,6 +246,15 @@ def write_run_info():
 
 write_run_info()
 
+def log_metric(event):
+    if not SAVE_CHECKPOINTS:
+        return
+
+    metrics_path = args.checkpoint_dir / 'metrics.jsonl'
+
+    with metrics_path.open('a') as file:
+        file.write(json.dumps(event) + '\n')
+
 # wandb experiment tracker
 
 import wandb
@@ -365,6 +374,13 @@ def save_checkpoint(step, loss = None, final = False):
 
     torch.save(checkpoint, checkpoint_path)
     print(f'saved checkpoint: {checkpoint_path}')
+    log_metric(dict(
+        step = step,
+        event = 'checkpoint',
+        path = str(checkpoint_path),
+        final = final,
+        loss = None if loss is None else loss.item(),
+    ))
 
 # training
 
@@ -382,6 +398,8 @@ for i in tqdm.tqdm(range(NUM_BATCHES), mininterval = 10., desc = 'training'):
     wandb.log(dict(loss = loss.item()))
 
     step = i + 1
+    train_loss = loss.item()
+    log_metric(dict(step = step, event = 'train', loss = train_loss))
 
     if args.checkpoint_every > 0 and step % args.checkpoint_every == 0:
         save_checkpoint(step, loss = loss)
@@ -391,6 +409,7 @@ for i in tqdm.tqdm(range(NUM_BATCHES), mininterval = 10., desc = 'training'):
         with torch.no_grad():
             loss = model(next(val_loader), return_loss = True)
             print(f'validation loss: {loss.item():.4f}')
+            log_metric(dict(step = step, event = 'validation', loss = loss.item()))
 
     if SHOULD_GENERATE and i % GENERATE_EVERY == 0:
         model.eval()
