@@ -13,6 +13,7 @@ import random
 import tqdm
 import gzip
 import numpy as np
+import triton
 
 import torch
 from torch import nn, Tensor
@@ -107,9 +108,23 @@ USE_ACCELERATED_SCAN = USE_ACCELERATED_SCAN and USE_TRITON
 USE_FLEX_ATTN = USE_FLEX_ATTN and USE_TRITON
 USE_FAST_INFERENCE = USE_FAST_INFERENCE and USE_CUDA
 
-print(f'using device: {DEVICE}')
-if USE_CUDA:
-    print(f'Triton-backed paths: {"enabled" if USE_TRITON else "disabled"}')
+def log_runtime_config():
+    print(f'using device: {DEVICE}')
+
+    if USE_CUDA:
+        major, minor = torch.cuda.get_device_capability()
+        print(f'cuda device: {torch.cuda.get_device_name()}')
+        print(f'cuda capability: sm_{major}{minor}')
+        print(f'torch: {torch.__version__}')
+        print(f'torch cuda: {torch.version.cuda}')
+        print(f'triton: {triton.__version__}')
+        print(f'triton support: {"available" if USE_TRITON else "unavailable"}')
+
+    print(f'accelerated scan: {"enabled" if USE_ACCELERATED_SCAN else "disabled"}')
+    print(f'flex attention: {"enabled" if USE_FLEX_ATTN else "disabled"}')
+    print(f'fast inference cache: {"enabled" if USE_FAST_INFERENCE else "disabled"}')
+
+log_runtime_config()
 
 # wandb experiment tracker
 
