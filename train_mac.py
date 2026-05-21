@@ -420,6 +420,7 @@ for i in tqdm.tqdm(range(NUM_BATCHES), mininterval = 10., desc = 'training'):
         sample = model.sample(inp[None, ...], GENERATE_LENGTH, use_cache = USE_FAST_INFERENCE)
         output_str = decode_tokens(sample[0])
         print(output_str)
+        log_metric(dict(step = step, event = 'sample', prompt = prime, output = output_str))
 
 if args.save_final_model:
     save_checkpoint(NUM_BATCHES, final = True)
