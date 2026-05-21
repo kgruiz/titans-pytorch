@@ -244,7 +244,7 @@ def write_run_info():
 
     run_info_path = args.checkpoint_dir / 'run-info.json'
     run_info_path.write_text(json.dumps(run_info, indent = 2) + '\n')
-    print(f'wrote run info: {run_info_path}')
+    tqdm.tqdm.write(f'wrote run info: {run_info_path}')
 
 write_run_info()
 
@@ -375,7 +375,7 @@ def save_checkpoint(step, loss = None, final = False):
     )
 
     torch.save(checkpoint, checkpoint_path)
-    print(f'saved checkpoint: {checkpoint_path}')
+    tqdm.tqdm.write(f'saved checkpoint: {checkpoint_path}')
     log_metric(dict(
         step = step,
         event = 'checkpoint',
@@ -393,14 +393,13 @@ for i in tqdm.tqdm(range(args.num_batches), mininterval = 10., desc = 'training'
         loss = model(next(train_loader), return_loss = True)
         loss.backward()
 
-    print(f'training loss: {loss.item():.4f}')
+    step = i + 1
+    train_loss = loss.item()
+    tqdm.tqdm.write(f'step {step} train loss: {train_loss:.4f}')
     torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
     optim.step()
     optim.zero_grad()
-    wandb.log(dict(loss = loss.item()))
-
-    step = i + 1
-    train_loss = loss.item()
+    wandb.log(dict(loss = train_loss))
     log_metric(dict(step = step, event = 'train', loss = train_loss))
 
     if args.checkpoint_every > 0 and step % args.checkpoint_every == 0:
@@ -410,18 +409,22 @@ for i in tqdm.tqdm(range(args.num_batches), mininterval = 10., desc = 'training'
         model.eval()
         with torch.no_grad():
             loss = model(next(val_loader), return_loss = True)
-            print(f'validation loss: {loss.item():.4f}')
-            log_metric(dict(step = step, event = 'validation', loss = loss.item()))
+            validation_loss = loss.item()
+            tqdm.tqdm.write(f'step {step} validation loss: {validation_loss:.4f}')
+            log_metric(dict(step = step, event = 'validation', loss = validation_loss))
 
     if SHOULD_GENERATE and i % GENERATE_EVERY == 0:
         model.eval()
         inp = random.choice(val_dataset)[:PRIME_LENGTH]
         prime = decode_tokens(inp)
-        print(f'%s \n\n %s', (prime, '*' * 100))
+        tqdm.tqdm.write(f'--- sample step {step} prompt ---')
+        tqdm.tqdm.write(prime)
 
         sample = model.sample(inp[None, ...], GENERATE_LENGTH, use_cache = USE_FAST_INFERENCE)
         output_str = decode_tokens(sample[0])
-        print(output_str)
+        tqdm.tqdm.write(f'--- sample step {step} output ---')
+        tqdm.tqdm.write(output_str)
+        tqdm.tqdm.write(f'--- end sample step {step} ---')
         log_metric(dict(step = step, event = 'sample', prompt = prime, output = output_str))
 
 if args.save_final_model:
