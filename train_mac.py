@@ -71,7 +71,8 @@ WANDB_ONLINE = False # turn this on to pipe experiment to cloud
 
 # perf related
 
-USE_ACCELERATED_SCAN = True
+# accelerated-scan's Triton backward kernel can hit illegal memory access on the A10 setup.
+USE_ACCELERATED_SCAN = False
 USE_FLEX_ATTN = True
 USE_FAST_INFERENCE = False
 
